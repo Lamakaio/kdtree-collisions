@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::Debug};
 
-pub trait KdValue: Default + Clone + Debug {
+pub trait KdValue: Default + Clone + Debug + PartialEq {
     type Position: PartialOrd + Debug;
     fn min_x(&self) -> Self::Position;
     fn min_y(&self) -> Self::Position;
@@ -22,6 +22,42 @@ impl<Value: KdValue, const ISLAND_SIZE: usize> Default for KdTree<Value, ISLAND_
 impl<Value: KdValue, const ISLAND_SIZE: usize> KdTree<Value, ISLAND_SIZE> {
     pub fn insert(&mut self, value: Value) {
         self.insert_internal(value, false)
+    }
+
+    pub fn remove_one(&mut self, value: Value) -> bool {
+        match self {
+            KdTree::Leaf(leaf) => {
+                let index = leaf
+                    .iter()
+                    .enumerate()
+                    .find(|(_, val)| val == &&value)
+                    .map(|t| t.0);
+                if let Some(index) = index {
+                    leaf.swap_remove(index);
+                    true
+                } else {
+                    false
+                }
+            }
+            KdTree::Node(node) => node.remove_one(value),
+        }
+    }
+
+    pub fn remove_all(&mut self, value: Value) {
+        match self {
+            KdTree::Leaf(leaf) => {
+                let indexes: Vec<usize> = leaf
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, val)| **val == value)
+                    .map(|t| t.0)
+                    .collect();
+                for index in indexes {
+                    leaf.swap_remove(index);
+                }
+            }
+            KdTree::Node(node) => node.remove_all(value),
+        }
     }
 
     fn insert_internal(&mut self, value: Value, vertical: bool) {
@@ -84,6 +120,8 @@ impl<Value: KdValue, const ISLAND_SIZE: usize> KdTree<Value, ISLAND_SIZE> {
             *self = new_tree;
         }
     }
+    //false positive it seems
+    #[allow(clippy::needless_lifetimes)]
     pub fn query_point<'a>(
         &'a self,
         x: Value::Position,
@@ -91,6 +129,8 @@ impl<Value: KdValue, const ISLAND_SIZE: usize> KdTree<Value, ISLAND_SIZE> {
     ) -> PointQuery<'a, Value, ISLAND_SIZE> {
         PointQuery::new(self, x, y)
     }
+    //false positive it seems
+    #[allow(clippy::needless_lifetimes)]
     pub fn query_rect<'a>(
         &'a self,
         min_x: Value::Position,
@@ -241,7 +281,7 @@ pub struct KdNode<Value: KdValue, const ISLAND_SIZE: usize> {
 }
 
 impl<Value: KdValue, const ISLAND_SIZE: usize> KdNode<Value, ISLAND_SIZE> {
-    fn insert(&mut self, value: Value) {
+    fn choose_tree(&mut self, value: &Value) -> &mut KdTree<Value, ISLAND_SIZE> {
         let cmp_position = if self.vertical {
             value.min_y()
         } else {
@@ -256,10 +296,20 @@ impl<Value: KdValue, const ISLAND_SIZE: usize> KdNode<Value, ISLAND_SIZE> {
             if max > self.left_max {
                 self.left_max = max
             }
-            self.left.insert_internal(value, !self.vertical);
+            &mut self.left
         } else {
-            self.right.insert_internal(value, !self.vertical)
+            &mut self.right
         }
+    }
+    fn insert(&mut self, value: Value) {
+        let vertical = self.vertical;
+        self.choose_tree(&value).insert_internal(value, !vertical);
+    }
+    fn remove_one(&mut self, value: Value) -> bool {
+        self.choose_tree(&value).remove_one(value)
+    }
+    fn remove_all(&mut self, value: Value) {
+        self.choose_tree(&value).remove_all(value);
     }
 }
 
@@ -268,7 +318,7 @@ mod tests {
     use core::f32;
 
     use crate::{KdTree, KdValue};
-    #[derive(Debug, Default, Clone)]
+    #[derive(Debug, Default, Clone, PartialEq)]
     struct TestValue {
         min_x: f32,
         max_x: f32,
@@ -287,7 +337,6 @@ mod tests {
     }
     impl KdValue for TestValue {
         type Position = f32;
-
         fn min_x(&self) -> Self::Position {
             self.min_x
         }
@@ -322,12 +371,7 @@ mod tests {
         tree.insert(TestValue::new(6., 10., 3., 7.));
         tree.insert(TestValue::new(7., 8., 4., 5.));
         tree.insert(TestValue::new(6., 8., 1., 3.));
-        assert_eq!(
-            tree.query_rect(5.5, 7.5, 3.5, 7.5)
-                .collect::<Vec<&TestValue>>()
-                .len(),
-            9
-        );
+        assert_eq!(tree.query_rect(5.5, 7.5, 3.5, 7.5).count(), 9);
     }
     #[test]
     fn point() {
@@ -347,11 +391,6 @@ mod tests {
         tree.insert(TestValue::new(6., 10., 3., 7.));
         tree.insert(TestValue::new(7., 8., 4., 5.));
         tree.insert(TestValue::new(6., 8., 1., 3.));
-        assert_eq!(
-            tree.query_point(7.5, 4.5)
-                .collect::<Vec<&TestValue>>()
-                .len(),
-            6
-        );
+        assert_eq!(tree.query_point(7.5, 4.5).count(), 6);
     }
 }
