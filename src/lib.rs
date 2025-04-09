@@ -1,13 +1,13 @@
-use std::{cmp::Ordering, fmt::Debug};
+use std::cmp::Ordering;
 
-pub trait KdValue: Default + Clone + Debug + PartialEq {
-    type Position: PartialOrd + Debug;
+pub trait KdValue: PartialEq {
+    type Position: PartialOrd + Clone;
     fn min_x(&self) -> Self::Position;
     fn min_y(&self) -> Self::Position;
     fn max_x(&self) -> Self::Position;
     fn max_y(&self) -> Self::Position;
 }
-#[derive(Debug)]
+
 pub enum KdTree<Value: KdValue, const ISLAND_SIZE: usize> {
     Leaf(Vec<Value>),
     Node(Box<KdNode<Value, ISLAND_SIZE>>),
@@ -78,9 +78,9 @@ impl<Value: KdValue, const ISLAND_SIZE: usize> KdTree<Value, ISLAND_SIZE> {
                         }
                     });
                     let median = if vertical {
-                        leaf[ISLAND_SIZE / 2].clone().min_y()
+                        leaf[ISLAND_SIZE / 2].min_y().clone()
                     } else {
-                        leaf[ISLAND_SIZE / 2].clone().min_x()
+                        leaf[ISLAND_SIZE / 2].min_x().clone()
                     };
                     let right = KdTree::Leaf(leaf.split_off(ISLAND_SIZE / 2));
                     let left = std::mem::take(leaf);
@@ -271,7 +271,6 @@ impl<'a, Value: KdValue, const ISLAND_SIZE: usize> Iterator for PointQuery<'a, V
         }
     }
 }
-#[derive(Debug)]
 pub struct KdNode<Value: KdValue, const ISLAND_SIZE: usize> {
     vertical: bool,
     median: Value::Position,
