@@ -171,44 +171,39 @@ impl<'a, Value: KdValue, const ISLAND_SIZE: usize> Iterator for RectQuery<'a, Va
     type Item = &'a Value;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let item = self.items_to_yield.pop();
-        if item.is_some() {
-            return item;
-        }
         loop {
-            if self.queue.is_empty() {
-                return None;
+            if !self.items_to_yield.is_empty() {
+                return self.items_to_yield.pop();
             }
-            let tree = self.queue.pop().unwrap();
-            match tree {
-                KdTree::Leaf(leaves) => {
-                    for leaf in leaves {
-                        if !(leaf.min_x() > self.max_x
-                            || self.min_x > leaf.max_x()
-                            || leaf.min_y() > self.max_y
-                            || self.min_y > leaf.max_y())
-                        {
-                            self.items_to_yield.push(leaf)
+            if let Some(tree) = self.queue.pop() {
+                match tree {
+                    KdTree::Leaf(leaves) => {
+                        for leaf in leaves {
+                            if leaf.min_x() <= self.max_x
+                                && self.min_x <= leaf.max_x()
+                                && leaf.min_y() <= self.max_y
+                                && self.min_y <= leaf.max_y()
+                            {
+                                self.items_to_yield.push(leaf)
+                            }
                         }
                     }
-                    let item = self.items_to_yield.pop();
-                    if item.is_some() {
-                        return item;
+                    KdTree::Node(node) => {
+                        let (min, max) = if node.vertical {
+                            (&self.min_y, &self.max_y)
+                        } else {
+                            (&self.min_x, &self.max_x)
+                        };
+                        if *min <= node.left_max {
+                            self.queue.push(&node.left)
+                        }
+                        if *max >= node.median {
+                            self.queue.push(&node.right)
+                        }
                     }
                 }
-                KdTree::Node(node) => {
-                    let (min, max) = if node.vertical {
-                        (&self.min_y, &self.max_y)
-                    } else {
-                        (&self.min_x, &self.max_x)
-                    };
-                    if *min <= node.left_max {
-                        self.queue.push(&node.left)
-                    }
-                    if *max >= node.median {
-                        self.queue.push(&node.right)
-                    }
-                }
+            } else {
+                return None;
             }
         }
     }
